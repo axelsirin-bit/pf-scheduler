@@ -1,3 +1,4 @@
+import { cache } from 'react'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 
@@ -6,7 +7,10 @@ import { createClient } from '@/lib/supabase/server'
 // every route reaching here is already authenticated, so a throw means
 // something upstream is broken, not a normal "not signed in" case to handle
 // gracefully.
-export async function getCurrentUser() {
+//
+// Wrapped in React's cache() so calling it from both the shell layout and a
+// page in the same request only hits the database once, not twice.
+export const getCurrentUser = cache(async () => {
   const supabase = await createClient()
   const {
     data: { user },
@@ -31,7 +35,7 @@ export async function getCurrentUser() {
   }
 
   return profile
-}
+})
 
 export async function signOut() {
   'use server'
