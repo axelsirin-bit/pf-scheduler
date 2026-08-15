@@ -4,7 +4,7 @@ import type { Database } from '@/lib/db/types'
 type AppRole = Database['public']['Enums']['app_role']
 
 const NAV_ITEMS: { label: string; href: string; role?: AppRole }[] = [
-  { label: 'This week', href: '/' },
+  { label: 'This week', href: '/week' },
   { label: 'My rounds', href: '/my-rounds' },
   { label: 'Judging', href: '/judging', role: 'judge' },
   { label: 'Leaderboard', href: '/leaderboard' },
