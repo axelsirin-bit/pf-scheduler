@@ -9,6 +9,8 @@ export type GridSlot = {
   startsAt: string
   endsAt: string
   isPast: boolean
+  isOpen: boolean
+  isAvailable: boolean
   availableCount: number
   availableNames: string[]
   roundStatus: 'open' | RoundStatus
@@ -44,7 +46,8 @@ type RawSlot = {
   label: string
   starts_at: string
   ends_at: string
-  availabilities: { profiles: { display_name: string } | null }[]
+  is_open: boolean
+  availabilities: { user_id: string; profiles: { display_name: string } | null }[]
   rounds: RawRound[]
 }
 export type RawCalendarDay = {
@@ -101,6 +104,8 @@ function shapeSlot(slot: RawSlot, userId: string, isAdmin: boolean, now: Date): 
     startsAt: slot.starts_at,
     endsAt: slot.ends_at,
     isPast: new Date(slot.starts_at).getTime() < now.getTime(),
+    isOpen: slot.is_open,
+    isAvailable: slot.availabilities.some((a) => a.user_id === userId),
     availableCount: availableNames.length,
     availableNames,
     roundStatus: (round?.status as RoundStatus | undefined) ?? 'open',
@@ -157,7 +162,8 @@ export async function getWeekGrid(
         label,
         starts_at,
         ends_at,
-        availabilities ( profiles ( display_name ) ),
+        is_open,
+        availabilities ( user_id, profiles ( display_name ) ),
         rounds ( id, status, room_freetext, created_at, rooms ( name ), round_participants ( user_id ) )
       )
     `
@@ -178,7 +184,9 @@ export async function getWeekGrid(
       label: s.label,
       starts_at: s.starts_at,
       ends_at: s.ends_at,
+      is_open: s.is_open,
       availabilities: (s.availabilities ?? []).map((a) => ({
+        user_id: a.user_id,
         profiles: a.profiles ? { display_name: a.profiles.display_name } : null,
       })),
       rounds: (s.rounds ?? []).map((r) => ({

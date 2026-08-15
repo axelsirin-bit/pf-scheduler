@@ -1,5 +1,11 @@
 import Link from 'next/link'
 import type { GridDay, GridSlot } from '@/lib/db/week'
+import { SlotCheckbox } from '@/lib/components/slot-checkbox'
+
+// The cheapest possible matching mechanism per decisions.md: three people
+// free and no round yet is worth calling out, since it's one click away
+// from a full round.
+const NUDGE_THRESHOLD = 3
 
 // GridDay.date is a plain calendar date ('YYYY-MM-DD'), not an instant —
 // formatting it must stay in UTC, never the school's real timezone, or a
@@ -40,6 +46,8 @@ function statusLabel(slot: GridSlot): string {
 }
 
 function SlotCard({ slot, timeZone }: { slot: GridSlot; timeZone: string }) {
+  const showNudge = slot.roundStatus === 'open' && slot.availableCount === NUDGE_THRESHOLD
+
   return (
     <li className={`rounded border border-neutral-200 p-2 text-sm ${slot.isPast ? 'opacity-50' : ''}`}>
       <div className="flex items-baseline justify-between gap-2">
@@ -54,6 +62,10 @@ function SlotCard({ slot, timeZone }: { slot: GridSlot; timeZone: string }) {
           : `${slot.availableCount} available: ${slot.availableNames.join(', ')}`}
       </p>
       <p className="mt-1 text-xs font-medium text-neutral-600">{statusLabel(slot)}</p>
+      {showNudge && <p className="mt-1 text-xs font-medium text-blue-700">One more and this is a full round</p>}
+      <div className="mt-2">
+        <SlotCheckbox slotId={slot.id} isAvailable={slot.isAvailable} disabled={slot.isPast || !slot.isOpen} />
+      </div>
     </li>
   )
 }

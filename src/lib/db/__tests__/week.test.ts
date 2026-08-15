@@ -10,6 +10,7 @@ function slot(overrides: Partial<RawCalendarDay['slots'][number]> = {}) {
     label: 'Morning Block',
     starts_at: '2026-09-14T12:00:00.000Z',
     ends_at: '2026-09-14T13:00:00.000Z',
+    is_open: true,
     availabilities: [],
     rounds: [],
     ...overrides,
@@ -145,9 +146,9 @@ describe('shapeWeekGrid', () => {
       slots: [
         slot({
           availabilities: [
-            { profiles: { display_name: 'Zoe T.' } },
-            { profiles: { display_name: 'Amir K.' } },
-            { profiles: null },
+            { user_id: 'zoe', profiles: { display_name: 'Zoe T.' } },
+            { user_id: 'amir', profiles: { display_name: 'Amir K.' } },
+            { user_id: 'ghost', profiles: null },
           ],
         }),
       ],
@@ -188,6 +189,41 @@ describe('shapeWeekGrid', () => {
 
     const result = shapeWeekGrid(WEEKDAYS, [day], 'debater-a', ['debater'], NOW)
     expect(result[0].slots.map((s) => s.id)).toEqual(['earlier', 'later'])
+  })
+
+  it('marks isAvailable true only when the viewer has their own availability row on the slot', () => {
+    const day: RawCalendarDay = {
+      date: '2026-09-14',
+      is_school_day: true,
+      note: null,
+      slots: [
+        slot({
+          availabilities: [
+            { user_id: 'someone-else', profiles: { display_name: 'Zoe T.' } },
+          ],
+        }),
+      ],
+    }
+
+    const asViewer = shapeWeekGrid(WEEKDAYS, [day], 'someone-else', ['debater'], NOW)
+    expect(asViewer[0].slots[0].isAvailable).toBe(true)
+
+    const asBystander = shapeWeekGrid(WEEKDAYS, [day], 'bystander', ['debater'], NOW)
+    expect(asBystander[0].slots[0].isAvailable).toBe(false)
+  })
+
+  it('passes through is_open from the slot row', () => {
+    const day: RawCalendarDay = {
+      date: '2026-09-14',
+      is_school_day: true,
+      note: null,
+      slots: [slot({ id: 'closed', is_open: false }), slot({ id: 'open', is_open: true })],
+    }
+
+    const result = shapeWeekGrid(WEEKDAYS, [day], 'debater-a', ['debater'], NOW)
+    const byId = Object.fromEntries(result[0].slots.map((s) => [s.id, s]))
+    expect(byId.closed.isOpen).toBe(false)
+    expect(byId.open.isOpen).toBe(true)
   })
 
   it('prefers a live round over a cancelled one on the same slot, and falls back to the most recent dead round if that is all there is', () => {
