@@ -131,6 +131,36 @@ These may be worth building later. Do not build them without asking.
 
 - Who is the adult data owner once the app leaves the first school? This has to
   have a name before a second school is onboarded.
+- `round_notes` privacy model — see below.
+- `school_requests` access control — see below.
+
+---
+
+## Deferred to step 12: round_notes and school_requests access control
+
+Step 03 enabled row level security on every table, including these two, but
+deliberately did not give either a real policy set — both need a decision
+that belongs with step 12's registration/onboarding work, not with the
+generic RLS pass.
+
+**`round_notes`.** A note "about" a specific user (`about_user`), attached to
+a round result. Not clear yet whether the person the note is about should be
+able to read it themselves, or whether it's judge/admin-only feedback that
+never reaches the debater it's about. Current policy: admins can read
+(scoped to their school), nobody can write through the API at all — writes
+will need a real path once this is decided, probably alongside the post-round
+form (step 11) or the wizard (step 12).
+
+**`school_requests`.** Has no `school_id` column by design — it exists
+before any school does, filled out by a visitor with no account and no
+session. The standard "own school" RLS pattern doesn't apply. Current state:
+RLS enabled, zero policies, meaning only the service role can touch it.
+Step 12 needs to define who can insert one (presumably: anyone, unauthenticated,
+through a public form — probably a server route using the service role rather
+than a client-side insert policy, to avoid exposing an open anonymous-insert
+policy on a table with no rate limiting) and who can read the queue (there is
+no "platform operator" role in `app_role` today — that may need to be a new
+concept, or handled entirely outside the app for now).
 
 ---
 

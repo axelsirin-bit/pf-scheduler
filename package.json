@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "types:gen": "supabase gen types typescript --linked --schema public > src/lib/db/types.ts"
+    "types:gen": "supabase gen types typescript --linked --schema public > src/lib/db/types.ts",
+    "verify:rls": "supabase db query --linked -f scripts/verify-rls.sql"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
