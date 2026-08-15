@@ -5,7 +5,7 @@ know where things stand.
 
 ## Current step
 
-**03 — Row level security**
+**04 — Seed data and a fake school**
 
 ## Log
 
@@ -15,7 +15,7 @@ know where things stand.
 | 01 Project init and first deploy | done | 2026-08-13 | Next.js app scaffolded (TypeScript, App Router, Tailwind, ESLint, `src/`) — done via a scratch-directory scaffold merged in by hand, since `create-next-app` refuses a non-empty directory and CLAUDE.md/README-FIRST.md/plan/ had to survive untouched. `.env.local` created with the real Supabase URL, anon key, and service role key; confirmed gitignored via `git check-ignore .env.local`. `.env.example` created with empty values. `@supabase/supabase-js` and `@supabase/ssr` installed. Three clients written: `src/lib/supabase/client.ts`, `server.ts`, `admin.ts` (with the browser-import guard). Supabase CLI installed as a dev dependency; `supabase init` run; `supabase link` completed against project ref `bkenqyuvbqomlenwrbbs` (needed a personal access token from the dashboard in addition to the DB password — not documented in the step file, added as a deviation below). `health_check` migration created and pushed to the remote database. `src/app/page.tsx` fetched it server-side; verified with `npm run build` and a real `npm start` request — page rendered "Database connection is working." live from Supabase. First commit made and pushed to `github.com/axelsirin-bit/pf-scheduler`, branch `main`. Vercel import completed by the human with all three env vars set; deploy verified live. Human confirmed complete 2026-08-15. |
 | 02 Database schema | done | 2026-08-15 | Six migrations written and pushed to remote (local `supabase db reset` skipped — see Blockers/Deviations, Docker is unreachable from this tool's environment). All 23 tables/views confirmed queryable via a live script using the service role client; `health_check` confirmed dropped. `types:gen` script added to `package.json` (`supabase gen types typescript --linked --schema public > src/lib/db/types.ts`); run for real, produced a 1410-line `src/lib/db/types.ts` covering all 23 tables/views including the four extras. `npm run build` still passes. Committed (`adc7fb9`) and pushed to `main`. |
 | 03 Row level security | done | 2026-08-15 | One migration (`20260815000000_row_level_security.sql`) written and pushed: helper functions `auth_school_id()`/`auth_has_role()`, RLS enabled + policies on all 22 tables. Two pre-existing bugs found and fixed in the same migration — see Deviations. Verified via `supabase db query --linked`: zero tables with RLS disabled, 22 with it enabled (21 from the human's list plus `school_terms`, flagged as a deviation). `supabase db advisors --linked --type security` run as a bonus check: confirms the view fix resolved the security-definer-view warning; surfaced a low-severity item (all three functions callable directly via REST RPC, Supabase's default grant) left as-is per the human's call, except `profiles_restrict_self_update` which is safe to lock down later if wanted. `scripts/verify-rls.sql` written: seeds School A/B (one admin + two debaters each, plus minimal schedule/round fixtures), runs all 10 required assertions as the real `authenticated` role with a simulated JWT (not as postgres), cleans up its own fixtures every run, reports pass/fail per assertion. `verify:rls` npm script added. Ran three times: clean pass (all 10/10), a deliberately-broken copy to confirm the failure path (correct non-zero exit + exact assertion + detail in the error message), and a second clean rerun to confirm idempotency — all three left zero leftover fixtures (schools, `auth.users` rows, and the temporary cleanup helper function all confirmed gone after each run). Not committed yet — human wants to review first. |
-| 04 Seed data and a fake school | not started | | Builds a fictional school, not the real one. See Deviations. |
+| 04 Seed data and a fake school | done | 2026-08-15 | `supabase/seed.sql` written and applied to remote (idempotent — deletes and regenerates its own fixtures by slug/email first). Creates Riverbend Academy (the fictional school — name, terms, Standard/Half-Day templates and blocks, Day 1-4 day types, schedule variants, 4 rooms) and Test Academy (minimal, school row only). `calendar_days` generated for the full Fall 2026 term via `generate_series` + a continuous Day 1-4 rotation, not hand-typed rows — 81 school days, 3 Half-Day, holidays (Labor Day, 3-day Thanksgiving break) correctly consuming zero rotation positions. 8 auth.users + profiles (4 per school: admin/debater/debater-and-judge/judge-only). `scripts/seed-dev-data.ts` written to turn calendar days into slots, parameterized by `--from`/`--to` (defaults to September 2026); found and fixed a real bug in its own timezone-conversion helper during testing — see Deviations. Verified live, not just "no error": Sep 8 = Day 3, Sep 16 = Day 1 + Half-Day (both spot-checks the human asked for, matching hand-computed values from the planning turn); 103 September slots at correct UTC times, checked against both EDT (September) and EST (December, generated then removed since only September was asked for) to confirm the DST math is actually right; Test Academy confirmed to have zero calendar days/slots/rooms; `verify:rls` re-run with the new seed data present, 10/10 still pass; a direct query as the real seeded `debater@riverbend.test` (not the throwaway RLS-test fixtures) confirms zero Test Academy rows visible. `npm run build` passes (needed one project-wide fix — see Deviations). Not committed yet — human wants to review first. |
 | 05 Auth and roster gating | not started | | |
 | 06 App shell, navigation, roles | not started | | |
 | 07 Schedule engine | not started | | |
@@ -71,6 +71,28 @@ runs the setup wizard (step 12) to onboard the real school for real:
 
 ## Deviations
 
+- **2026-08-15 — step 04: a real timezone bug in `seed-dev-data.ts`, and a
+  project-wide `tsconfig.json` change needed to run it.**
+  - **Slot times were off by 4 hours on first run.** The
+    `zonedTimeToUtc` drift-correction loop compared each iteration's
+    result against the *previous guess* instead of the fixed target
+    wall-clock time, so instead of converging it overcorrected on the
+    second pass — 08:00 America/New_York came out as 16:00 UTC instead of
+    the correct 12:00 UTC. Caught by actually checking generated slot
+    times against hand-computed values rather than trusting a clean exit
+    code. Fixed by comparing against a fixed target each pass; re-verified
+    against both EDT (September, UTC-4) and EST (December, UTC-5) to
+    confirm the DST math itself is right, not just the one date tested.
+  - **`npm run build` failed after adding the script.** Node's ESM
+    resolver requires an explicit `.ts` extension on the relative import
+    to `admin.ts` to run the script directly with `node
+    --env-file=.env.local`, but the project's `tsconfig.json` (via
+    Next.js's default `moduleResolution: "bundler"`) rejects `.ts`
+    extensions in import paths unless `allowImportingTsExtensions` is
+    set. Added that option to `tsconfig.json` — safe here since
+    `noEmit: true` was already set, which is what that option requires.
+    This is a small project-wide tsconfig change, not scoped to just this
+    script; flagging it as such rather than treating it as purely local.
 - **2026-08-15 — step 03: two pre-existing bugs found and fixed, one more
   missing table found, four extra tables from step 02 given policies.**
   - **Views bypassed RLS entirely.** `v_participation`/`v_leaderboard`
