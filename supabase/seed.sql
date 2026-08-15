@@ -181,53 +181,38 @@ join schedule_variants sv on sv.school_id = school.school_id
   and sv.name = case when sd.date in (select date from half_days) then 'Half-Day' else 'Standard' end;
 
 -- ---------------------------------------------------------------------
--- test users — auth.users inserted directly since the roster-gating
--- trigger doesn't exist until step 05. Four per school: admin, debater,
--- debater-and-judge, judge-only.
+-- test users — four per school: admin, debater, debater-and-judge,
+-- judge-only. Since step 05, every auth.users insert fires the
+-- roster-gating trigger, so each user needs a matching roster_invites row
+-- first; the trigger creates the profiles row itself from there, the same
+-- path a real invited sign-in goes through. grad_year isn't set here
+-- (roster_invites has no such column, matching real life — a school
+-- wouldn't know a debater's grad year from a Google sign-in either).
 -- ---------------------------------------------------------------------
 
-insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
-select gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', u.email, '', now(), now(), now(), '{}', '{}'
-from (values
-  ('admin@riverbend.test'),
-  ('debater@riverbend.test'),
-  ('hybrid@riverbend.test'),
-  ('judge@riverbend.test'),
-  ('admin@test-academy.test'),
-  ('debater@test-academy.test'),
-  ('hybrid@test-academy.test'),
-  ('judge@test-academy.test')
-) as u(email);
+insert into roster_invites (school_id, email, roles, age_confirmed)
+select s.id, u.email, u.roles, true
+from schools s
+join (values
+  ('riverbend-academy', 'admin@riverbend.test',      array['admin']::app_role[]),
+  ('riverbend-academy', 'debater@riverbend.test',    array['debater']::app_role[]),
+  ('riverbend-academy', 'hybrid@riverbend.test',     array['debater','judge']::app_role[]),
+  ('riverbend-academy', 'judge@riverbend.test',      array['judge']::app_role[]),
+  ('test-academy',      'admin@test-academy.test',   array['admin']::app_role[]),
+  ('test-academy',      'debater@test-academy.test', array['debater']::app_role[]),
+  ('test-academy',      'hybrid@test-academy.test',  array['debater','judge']::app_role[]),
+  ('test-academy',      'judge@test-academy.test',   array['judge']::app_role[])
+) as u(slug, email, roles) on u.slug = s.slug;
 
-insert into profiles (id, school_id, email, full_name, display_name, roles, grad_year)
-select au.id, s.id, 'admin@riverbend.test', 'Jordan Vance', 'Jordan V.', '{admin}'::app_role[], null::int
-from auth.users au, schools s
-where au.email = 'admin@riverbend.test' and s.slug = 'riverbend-academy'
-union all
-select au.id, s.id, 'debater@riverbend.test', 'Casey Nguyen', 'Casey N.', '{debater}'::app_role[], 2028
-from auth.users au, schools s
-where au.email = 'debater@riverbend.test' and s.slug = 'riverbend-academy'
-union all
-select au.id, s.id, 'hybrid@riverbend.test', 'Morgan Patel', 'Morgan P.', '{debater,judge}'::app_role[], 2027
-from auth.users au, schools s
-where au.email = 'hybrid@riverbend.test' and s.slug = 'riverbend-academy'
-union all
-select au.id, s.id, 'judge@riverbend.test', 'Riley Chen', 'Riley C.', '{judge}'::app_role[], null::int
-from auth.users au, schools s
-where au.email = 'judge@riverbend.test' and s.slug = 'riverbend-academy'
-union all
-select au.id, s.id, 'admin@test-academy.test', 'Sam Whitfield', 'Sam W.', '{admin}'::app_role[], null::int
-from auth.users au, schools s
-where au.email = 'admin@test-academy.test' and s.slug = 'test-academy'
-union all
-select au.id, s.id, 'debater@test-academy.test', 'Drew Kowalski', 'Drew K.', '{debater}'::app_role[], 2028
-from auth.users au, schools s
-where au.email = 'debater@test-academy.test' and s.slug = 'test-academy'
-union all
-select au.id, s.id, 'hybrid@test-academy.test', 'Avery Lindqvist', 'Avery L.', '{debater,judge}'::app_role[], 2027
-from auth.users au, schools s
-where au.email = 'hybrid@test-academy.test' and s.slug = 'test-academy'
-union all
-select au.id, s.id, 'judge@test-academy.test', 'Quinn Okafor', 'Quinn O.', '{judge}'::app_role[], null::int
-from auth.users au, schools s
-where au.email = 'judge@test-academy.test' and s.slug = 'test-academy';
+insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
+select gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', u.email, '', now(), now(), now(), '{}', jsonb_build_object('full_name', u.full_name)
+from (values
+  ('admin@riverbend.test',      'Jordan Vance'),
+  ('debater@riverbend.test',    'Casey Nguyen'),
+  ('hybrid@riverbend.test',     'Morgan Patel'),
+  ('judge@riverbend.test',      'Riley Chen'),
+  ('admin@test-academy.test',   'Sam Whitfield'),
+  ('debater@test-academy.test', 'Drew Kowalski'),
+  ('hybrid@test-academy.test',  'Avery Lindqvist'),
+  ('judge@test-academy.test',   'Quinn Okafor')
+) as u(email, full_name);

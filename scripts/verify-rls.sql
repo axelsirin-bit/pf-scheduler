@@ -8,6 +8,11 @@
 -- policies rather than bypassing them. Cleans up its own fixtures on every
 -- run, success or failure, and reports a table of pass/fail with details.
 --
+-- Since step 05, auth.users inserts go through the roster-gating trigger
+-- (any insert there fires it, not just real sign-ins) — so fixture users
+-- need a matching roster_invites row created first, and profiles come from
+-- the trigger rather than a manual insert here.
+--
 -- Run with: npm run verify:rls
 -- Requires SUPABASE_ACCESS_TOKEN in the environment (same as types:gen).
 --
@@ -36,9 +41,9 @@ begin
   delete from schedule_variants where school_id in (select id from schools where slug in ('rls-test-school-a','rls-test-school-b'));
   delete from template_blocks where school_id in (select id from schools where slug in ('rls-test-school-a','rls-test-school-b'));
   delete from period_templates where school_id in (select id from schools where slug in ('rls-test-school-a','rls-test-school-b'));
-  delete from roster_invites where school_id in (select id from schools where slug in ('rls-test-school-a','rls-test-school-b'));
   delete from audit_log where school_id in (select id from schools where slug in ('rls-test-school-a','rls-test-school-b'));
   delete from auth.users where email like '%@rls-test.local'; -- cascades to profiles
+  delete from roster_invites where school_id in (select id from schools where slug in ('rls-test-school-a','rls-test-school-b'));
   delete from schools where slug in ('rls-test-school-a','rls-test-school-b');
 end;
 $$;
@@ -91,32 +96,36 @@ begin
   insert into schools (name, slug, status) values ('RLS Test School A', 'rls-test-school-a', 'active') returning id into v_school_a;
   insert into schools (name, slug, status) values ('RLS Test School B', 'rls-test-school-b', 'active') returning id into v_school_b;
 
+  -- roster_invites first — the roster-gating trigger (step 05) fires on
+  -- every auth.users insert now and rejects anyone without a matching
+  -- unclaimed invite, fixtures included.
+  insert into roster_invites (school_id, email, roles, age_confirmed) values
+    (v_school_a, 'admin-a@rls-test.local',    '{admin}'::app_role[],    true),
+    (v_school_a, 'debater-a1@rls-test.local', '{debater}'::app_role[],  true),
+    (v_school_a, 'debater-a2@rls-test.local', '{debater}'::app_role[],  true),
+    (v_school_b, 'admin-b@rls-test.local',    '{admin}'::app_role[],    true),
+    (v_school_b, 'debater-b1@rls-test.local', '{debater}'::app_role[],  true),
+    (v_school_b, 'debater-b2@rls-test.local', '{debater}'::app_role[],  true);
+
+  -- profiles are created by the trigger now, not inserted here
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
-    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'admin-a@rls-test.local', '', now(), now(), now(), '{}', '{}')
+    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'admin-a@rls-test.local', '', now(), now(), now(), '{}', '{"full_name":"Admin A"}')
     returning id into v_admin_a;
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
-    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'debater-a1@rls-test.local', '', now(), now(), now(), '{}', '{}')
+    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'debater-a1@rls-test.local', '', now(), now(), now(), '{}', '{"full_name":"Debater A1"}')
     returning id into v_debater_a1;
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
-    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'debater-a2@rls-test.local', '', now(), now(), now(), '{}', '{}')
+    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'debater-a2@rls-test.local', '', now(), now(), now(), '{}', '{"full_name":"Debater A2"}')
     returning id into v_debater_a2;
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
-    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'admin-b@rls-test.local', '', now(), now(), now(), '{}', '{}')
+    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'admin-b@rls-test.local', '', now(), now(), now(), '{}', '{"full_name":"Admin B"}')
     returning id into v_admin_b;
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
-    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'debater-b1@rls-test.local', '', now(), now(), now(), '{}', '{}')
+    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'debater-b1@rls-test.local', '', now(), now(), now(), '{}', '{"full_name":"Debater B1"}')
     returning id into v_debater_b1;
   insert into auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
-    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'debater-b2@rls-test.local', '', now(), now(), now(), '{}', '{}')
+    values (gen_random_uuid(), '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'debater-b2@rls-test.local', '', now(), now(), now(), '{}', '{"full_name":"Debater B2"}')
     returning id into v_debater_b2;
-
-  insert into profiles (id, school_id, email, full_name, display_name, roles) values
-    (v_admin_a,    v_school_a, 'admin-a@rls-test.local',    'Admin A',    'Admin A.',    '{admin}'),
-    (v_debater_a1, v_school_a, 'debater-a1@rls-test.local', 'Debater A1', 'Debater A1.', '{debater}'),
-    (v_debater_a2, v_school_a, 'debater-a2@rls-test.local', 'Debater A2', 'Debater A2.', '{debater}'),
-    (v_admin_b,    v_school_b, 'admin-b@rls-test.local',    'Admin B',    'Admin B.',    '{admin}'),
-    (v_debater_b1, v_school_b, 'debater-b1@rls-test.local', 'Debater B1', 'Debater B1.', '{debater}'),
-    (v_debater_b2, v_school_b, 'debater-b2@rls-test.local', 'Debater B2', 'Debater B2.', '{debater}');
 
   -- minimal schedule structure per school, just enough for a real slot and round
   insert into period_templates (school_id, name) values (v_school_a, 'Test') returning id into v_template_a;

@@ -5,7 +5,7 @@ know where things stand.
 
 ## Current step
 
-**04 — Seed data and a fake school**
+**05 — Auth and roster gating**
 
 ## Log
 
@@ -16,7 +16,7 @@ know where things stand.
 | 02 Database schema | done | 2026-08-15 | Six migrations written and pushed to remote (local `supabase db reset` skipped — see Blockers/Deviations, Docker is unreachable from this tool's environment). All 23 tables/views confirmed queryable via a live script using the service role client; `health_check` confirmed dropped. `types:gen` script added to `package.json` (`supabase gen types typescript --linked --schema public > src/lib/db/types.ts`); run for real, produced a 1410-line `src/lib/db/types.ts` covering all 23 tables/views including the four extras. `npm run build` still passes. Committed (`adc7fb9`) and pushed to `main`. |
 | 03 Row level security | done | 2026-08-15 | One migration (`20260815000000_row_level_security.sql`) written and pushed: helper functions `auth_school_id()`/`auth_has_role()`, RLS enabled + policies on all 22 tables. Two pre-existing bugs found and fixed in the same migration — see Deviations. Verified via `supabase db query --linked`: zero tables with RLS disabled, 22 with it enabled (21 from the human's list plus `school_terms`, flagged as a deviation). `supabase db advisors --linked --type security` run as a bonus check: confirms the view fix resolved the security-definer-view warning; surfaced a low-severity item (all three functions callable directly via REST RPC, Supabase's default grant) left as-is per the human's call, except `profiles_restrict_self_update` which is safe to lock down later if wanted. `scripts/verify-rls.sql` written: seeds School A/B (one admin + two debaters each, plus minimal schedule/round fixtures), runs all 10 required assertions as the real `authenticated` role with a simulated JWT (not as postgres), cleans up its own fixtures every run, reports pass/fail per assertion. `verify:rls` npm script added. Ran three times: clean pass (all 10/10), a deliberately-broken copy to confirm the failure path (correct non-zero exit + exact assertion + detail in the error message), and a second clean rerun to confirm idempotency — all three left zero leftover fixtures (schools, `auth.users` rows, and the temporary cleanup helper function all confirmed gone after each run). Not committed yet — human wants to review first. |
 | 04 Seed data and a fake school | done | 2026-08-15 | `supabase/seed.sql` written and applied to remote (idempotent — deletes and regenerates its own fixtures by slug/email first). Creates Riverbend Academy (the fictional school — name, terms, Standard/Half-Day templates and blocks, Day 1-4 day types, schedule variants, 4 rooms) and Test Academy (minimal, school row only). `calendar_days` generated for the full Fall 2026 term via `generate_series` + a continuous Day 1-4 rotation, not hand-typed rows — 81 school days, 3 Half-Day, holidays (Labor Day, 3-day Thanksgiving break) correctly consuming zero rotation positions. 8 auth.users + profiles (4 per school: admin/debater/debater-and-judge/judge-only). `scripts/seed-dev-data.ts` written to turn calendar days into slots, parameterized by `--from`/`--to` (defaults to September 2026); found and fixed a real bug in its own timezone-conversion helper during testing — see Deviations. Verified live, not just "no error": Sep 8 = Day 3, Sep 16 = Day 1 + Half-Day (both spot-checks the human asked for, matching hand-computed values from the planning turn); 103 September slots at correct UTC times, checked against both EDT (September) and EST (December, generated then removed since only September was asked for) to confirm the DST math is actually right; Test Academy confirmed to have zero calendar days/slots/rooms; `verify:rls` re-run with the new seed data present, 10/10 still pass; a direct query as the real seeded `debater@riverbend.test` (not the throwaway RLS-test fixtures) confirms zero Test Academy rows visible. `npm run build` passes (needed one project-wide fix — see Deviations). Not committed yet — human wants to review first. |
-| 05 Auth and roster gating | not started | | |
+| 05 Auth and roster gating | in progress | 2026-08-15 | Trigger migration (`20260816000000_auth_roster_gating.sql`), `security definer` like step 03's helpers: rejects any `auth.users` insert without a matching unclaimed `roster_invites` row, otherwise creates the `profiles` row and claims the invite. Tested directly at the SQL level (not just built): rejection leaves zero trace in `auth.users`/`profiles` (the exact failure mode the step file warns about — confirmed NOT an issue on this Supabase version), success path creates correct `school_id`/`full_name`/`display_name`/`roles`, claimed invites correctly excluded from the trigger's own lookup. `src/proxy.ts`, `src/app/sign-in/`, `src/app/auth/callback/route.ts`, `src/lib/auth.ts` (`getCurrentUser()` + `signOut()`) all written. `supabase/seed.sql` and `scripts/verify-rls.sql` both updated to create `roster_invites` before their `auth.users` inserts and let the trigger create `profiles` itself, since the trigger now fires on every insert there too — re-verified both (8/8 seed profiles created correctly through the real trigger path; `verify:rls` still 10/10). Two real findings beyond what was asked — see Deviations: the email-in-refusal-message requirement turned out not to be achievable as specified, and Next.js 16 has renamed Middleware to Proxy, which the step file predates. `npm run build` passes; `Database` types were wired into all three Supabase client factories for the first time (generated in step 02, never actually applied until this step's code needed real query typing). See PROGRESS.md verification notes below for exactly what was tested directly vs. needs the human's real Google OAuth. Not committed yet. |
 | 06 App shell, navigation, roles | not started | | |
 | 07 Schedule engine | not started | | |
 | 08 Week grid | not started | | |
@@ -71,6 +71,48 @@ runs the setup wizard (step 12) to onboard the real school for real:
 
 ## Deviations
 
+- **2026-08-15 — step 05: the refusal message can't name the attempted
+  email, Next.js 16 renamed Middleware to Proxy, and Database types were
+  never actually wired into the Supabase clients until now.**
+  - **The email genuinely can't be recovered.** Task 4 asks the refusal
+    message to name the email address that was tried. Tested this directly
+    against the real Supabase auth server — not guessed — using the admin
+    API (`supabase.auth.admin.createUser()`) to trigger the same
+    trigger-rejection path a real OAuth sign-in would hit. Result: Supabase
+    genericizes it to `"Database error creating new user"` with no email
+    attached, regardless of what the trigger's own exception message says.
+    By the time our own `/auth/callback` route sees anything, Supabase's
+    auth server has already decided and stripped the detail — there's no
+    session, no code, and nothing in the error redirect to recover the
+    email from. `src/app/sign-in/page.tsx` shows a clear refusal message
+    without the specific email instead of fabricating one. A fix would mean
+    moving off a raw DB trigger onto Supabase's "Before User Created" Auth
+    Hook (which supports a custom surfaced error) or handling rejection in
+    application code after the fact — the latter reintroduces exactly the
+    "authenticated user exists without a profile" window task 3 was
+    designed to avoid. Flagging both as open options rather than picking
+    one unasked.
+  - **`src/middleware.ts` → `src/proxy.ts`.** `next dev` appended a notice
+    to `CLAUDE.md` (visible in the working tree, not reverted) pointing at
+    `node_modules/next/dist/docs/` because this Next.js version has
+    breaking changes from training-data assumptions. Checked it: Next.js 16
+    renamed Middleware to Proxy — same functionality, `proxy.ts` exporting
+    `proxy` instead of `middleware.ts` exporting `middleware`. The step
+    file's "Middleware at `src/middleware.ts`" predates this rename;
+    `middleware.ts` still worked but logged a deprecation warning on every
+    build. Renamed rather than leaving deprecated code in a fresh project;
+    functionality is identical, confirmed via the same redirect tests
+    before and after.
+  - **Wired the generated `Database` type into all three Supabase client
+    factories for the first time.** `src/lib/db/types.ts` was generated in
+    step 02 but never actually passed to `createBrowserClient`/
+    `createServerClient`/`createClient` — every query since has been
+    running without real type information. Surfaced now because
+    `getCurrentUser()`'s embedded `schools` join needed accurate typing to
+    compile (`npm run build` failed without it: a to-one relationship was
+    inferred as an array). Small, mechanical fix, but worth flagging since
+    it changes type-checking behavior for every existing query, not just
+    the new code.
 - **2026-08-15 — step 04: a real timezone bug in `seed-dev-data.ts`, and a
   project-wide `tsconfig.json` change needed to run it.**
   - **Slot times were off by 4 hours on first run.** The
