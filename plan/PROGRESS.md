@@ -5,15 +5,15 @@ know where things stand.
 
 ## Current step
 
-**01 — Project init and first deploy**
+**02 — Database schema**
 
 ## Log
 
 | Step | Status | Date | Notes |
 |------|--------|------|-------|
 | 00 Accounts and environment | done | 2026-08-13 | Node v24.18.1, npm 11.16.0, git 2.55.0.windows.3 — all above the Node 20+ minimum. `git init` run in this folder. GitHub: private repo `pf-scheduler` created, empty, no README. Vercel: account created, signed in with GitHub, no project imported yet. Supabase project created (region us-east-2, not us-east-1 — fine, just noting it accurately). Google sign-in enabled and working. Supabase URL, anon key, and service role key all received (2026-08-13). Service role key is held for step 01's `.env.local` — not written to this file or any other tracked file. |
-| 01 Project init and first deploy | in progress | 2026-08-13 | Next.js app scaffolded (TypeScript, App Router, Tailwind, ESLint, `src/`) — done via a scratch-directory scaffold merged in by hand, since `create-next-app` refuses a non-empty directory and CLAUDE.md/README-FIRST.md/plan/ had to survive untouched. `.env.local` created with the real Supabase URL, anon key, and service role key; confirmed gitignored via `git check-ignore .env.local`. `.env.example` created with empty values. `@supabase/supabase-js` and `@supabase/ssr` installed. Three clients written: `src/lib/supabase/client.ts`, `server.ts`, `admin.ts` (with the browser-import guard). Supabase CLI installed as a dev dependency; `supabase init` run; `supabase link` completed against project ref `bkenqyuvbqomlenwrbbs` (needed a personal access token from the dashboard in addition to the DB password — not documented in the step file, added as a deviation below). `health_check` migration created and pushed to the remote database. `src/app/page.tsx` fetches it server-side; verified locally with `npm run build` and a real `npm start` request — page rendered "Database connection is working." live from Supabase. DB password, access token, and service role key confirmed absent from every non-gitignored file by search. Paused here per the human's instruction, before the first commit/push and before the Vercel import walkthrough. |
-| 02 Database schema | not started | | |
+| 01 Project init and first deploy | done | 2026-08-13 | Next.js app scaffolded (TypeScript, App Router, Tailwind, ESLint, `src/`) — done via a scratch-directory scaffold merged in by hand, since `create-next-app` refuses a non-empty directory and CLAUDE.md/README-FIRST.md/plan/ had to survive untouched. `.env.local` created with the real Supabase URL, anon key, and service role key; confirmed gitignored via `git check-ignore .env.local`. `.env.example` created with empty values. `@supabase/supabase-js` and `@supabase/ssr` installed. Three clients written: `src/lib/supabase/client.ts`, `server.ts`, `admin.ts` (with the browser-import guard). Supabase CLI installed as a dev dependency; `supabase init` run; `supabase link` completed against project ref `bkenqyuvbqomlenwrbbs` (needed a personal access token from the dashboard in addition to the DB password — not documented in the step file, added as a deviation below). `health_check` migration created and pushed to the remote database. `src/app/page.tsx` fetched it server-side; verified with `npm run build` and a real `npm start` request — page rendered "Database connection is working." live from Supabase. First commit made and pushed to `github.com/axelsirin-bit/pf-scheduler`, branch `main`. Vercel import completed by the human with all three env vars set; deploy verified live. Human confirmed complete 2026-08-15. |
+| 02 Database schema | done | 2026-08-15 | Six migrations written and pushed to remote (local `supabase db reset` skipped — see Blockers/Deviations, Docker is unreachable from this tool's environment). All 23 tables/views confirmed queryable via a live script using the service role client; `health_check` confirmed dropped. `types:gen` script added to `package.json` (`supabase gen types typescript --linked --schema public > src/lib/db/types.ts`); run for real, produced a 1410-line `src/lib/db/types.ts` covering all 23 tables/views including the four extras. `npm run build` still passes. Not committed yet — human wants to review first. Note: `src/app/page.tsx` still queries the now-dropped `health_check` table and will error at request time; expected per this step's "no application code changes" scope, not fixed here. |
 | 03 Row level security | not started | | |
 | 04 Seed data and a fake school | not started | | Builds a fictional school, not the real one. See Deviations. |
 | 05 Auth and roster gating | not started | | |
@@ -35,16 +35,18 @@ Status values: not started, in progress, blocked, done.
 
 ## Blockers
 
-None currently. Step 00 is done. Step 01 needs two more things from the human
-once it starts: the Supabase database password and project ref, to run
-`supabase link` — neither has been collected yet, ask when that task comes up.
-
-`.env.local` doesn't exist yet — step 01 creates it. The Supabase URL, anon
-key, and service role key are all in hand for that (service role key received
-2026-08-13, held in conversation only, not written to any tracked file —
-see the step 00 log row).
-      NEXT_PUBLIC_SUPABASE_URL=https://bkenqyuvbqomlenwrbbs.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrZW5xeXV2YnFvbWxlbndyYmJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0OTQ1MjcsImV4cCI6MjEwMjA3MDUyN30.DGLWdfJaDU4hq6Ouw6Z2hC-InM5gaNNwztKhtMkQm8M
+**Local `supabase db reset` cannot be run by Claude Code in this
+environment, for any future step.** Docker Desktop and WSL2 are genuinely
+installed and running on the human's machine, but the tools this session
+uses to run shell commands are isolated from that session somehow — `docker
+ps` and even `wsl --status` report nothing installed/running from inside
+these tools, with or without sandbox restrictions lifted, even right after
+the human confirmed Docker was up. This isn't a one-time setup problem to
+retry; treat it as a standing limitation. Established 2026-08-15 in step 02.
+Fallback used and expected to keep being used: dry-run `supabase db push`,
+review it, then apply directly to the remote project. The human can still
+run `supabase db reset` themselves in their own VS Code terminal (it works
+fine there) and paste results back if a real local check is ever needed.
 
 ## Not blocking anything right now, needed later for real onboarding (step 12)
 
@@ -69,6 +71,16 @@ runs the setup wizard (step 12) to onboard the real school for real:
 
 ## Deviations
 
+- **2026-08-15 — step 02's per-migration table lists don't match
+  `schema.sql`; treated `schema.sql` as authoritative.** Four tables exist in
+  `schema.sql` but weren't named in the step file's summary: `schedule_variants`
+  (added after the step file was written, in the schedule-variant correction)
+  went into migration 3 (`schedule`); `round_notes`, `notifications_sent`, and
+  `school_requests` (present in `schema.sql` from the start, just omitted from
+  the step's list) went into migrations 4 (`rounds`) and 5 (`admin`)
+  respectively. Also reordered migration 4 to create `rooms` before `rounds`,
+  since `rounds.room_id` is a foreign key to `rooms` and the step's listed
+  order would have failed. Confirmed with the human before writing any files.
 - **2026-08-13 — `create-next-app` can't run directly in this folder, and
   `supabase link` needs a personal access token step 01 doesn't mention.**
   `create-next-app` refuses any non-empty directory regardless of what's in
