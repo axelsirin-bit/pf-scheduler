@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "types:gen": "supabase gen types typescript --linked --schema public > src/lib/db/types.ts",
     "verify:rls": "supabase db query --linked -f scripts/verify-rls.sql"
   },
@@ -26,6 +27,7 @@
     "eslint-config-next": "16.3.0",
     "supabase": "^2.114.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }
