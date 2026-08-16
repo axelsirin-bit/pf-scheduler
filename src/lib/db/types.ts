@@ -1266,6 +1266,7 @@ export type Database = {
         | "confirmed"
         | "completed"
         | "cancelled"
+        | "awaiting_result"
         | "expired"
       school_status: "pending" | "active" | "suspended"
     }
@@ -1406,6 +1407,7 @@ export const Constants = {
         "confirmed",
         "completed",
         "cancelled",
+        "awaiting_result",
         "expired",
       ],
       school_status: ["pending", "active", "suspended"],

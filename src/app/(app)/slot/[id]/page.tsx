@@ -1,7 +1,10 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { getSlotDetail, getActiveRooms } from '@/lib/db/rounds'
 import { JoinRoundForm, LeaveRoundButton, CancelRoundForm, SetRoomForm } from '@/lib/components/round-actions'
+
+const RESULT_ELIGIBLE_STATUSES = ['confirmed', 'awaiting_result', 'completed']
 
 function formatDateTime(startsAt: string, endsAt: string, timeZone: string): string {
   const day = new Intl.DateTimeFormat('en-US', {
@@ -20,6 +23,8 @@ function roundStatusLabel(status: string): string {
       return 'Forming'
     case 'confirmed':
       return 'Confirmed'
+    case 'awaiting_result':
+      return 'Awaiting result'
     case 'completed':
       return 'Completed'
     case 'cancelled':
@@ -109,6 +114,11 @@ export default async function SlotPage({ params }: { params: Promise<{ id: strin
               <p className={judge ? '' : 'text-neutral-500'}>{judge ? judge.displayName : 'Open'}</p>
             </div>
           </div>
+          {RESULT_ELIGIBLE_STATUSES.includes(round.status) && (
+            <Link href={`/round/${round.id}/result`} className="mt-2 inline-block text-sm underline">
+              {round.status === 'completed' ? 'View result' : 'Submit result'}
+            </Link>
+          )}
         </div>
       )}
 

@@ -34,6 +34,8 @@ function statusLabel(slot: GridSlot): string {
       return `Forming · ${slot.roundCount} of 5`
     case 'confirmed':
       return slot.room ? `Confirmed · ${slot.room}` : 'Confirmed'
+    case 'awaiting_result':
+      return 'Awaiting result'
     case 'completed':
       return 'Completed'
     case 'cancelled':
