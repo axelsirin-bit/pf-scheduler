@@ -1248,7 +1248,11 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      auth_has_role: {
+        Args: { p_role: Database["public"]["Enums"]["app_role"] }
+        Returns: boolean
+      }
+      auth_school_id: { Args: never; Returns: string }
     }
     Enums: {
       app_role: "admin" | "judge" | "debater"

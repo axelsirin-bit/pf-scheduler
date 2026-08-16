@@ -51,7 +51,12 @@ function SlotCard({ slot, timeZone }: { slot: GridSlot; timeZone: string }) {
   return (
     <li className={`rounded border border-neutral-200 p-2 text-sm ${slot.isPast ? 'opacity-50' : ''}`}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="font-medium">{slot.label}</span>
+        <Link
+          href={`/slot/${slot.id}`}
+          className="font-medium underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+        >
+          {slot.label}
+        </Link>
         <span className="tabular-nums text-neutral-600">
           {formatTimeRange(slot.startsAt, slot.endsAt, timeZone)}
         </span>
