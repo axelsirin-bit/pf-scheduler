@@ -41,6 +41,12 @@ export default function AdminPage() {
       <p className="mt-4 text-neutral-600">
         Nothing to manage yet. Roster, rooms, and the audit log will live here.
       </p>
+      <p className="mt-2 text-sm">
+        <Link href="/admin/participation" className="underline">
+          Participation breakdown
+        </Link>{' '}
+        — full names, per-person totals.
+      </p>
       <OnboardingChecklist />
     </RequireRole>
   )
