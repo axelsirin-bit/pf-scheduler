@@ -10,7 +10,12 @@ import { NextResponse, type NextRequest } from 'next/server'
 // (same functionality, new convention) — the step file predates that
 // rename. middleware.ts still works but logs a deprecation warning; this
 // is the current convention instead.
-const PUBLIC_PATHS = ['/sign-in', '/auth/callback']
+// /admin/setup is deliberately NOT public — proxy.ts only gates on session
+// presence, not school status, so the wizard already works correctly for a
+// signed-in admin without being listed here. Adding it would let an
+// unauthenticated visitor reach it and hit an unhandled exception in
+// getCurrentUser() instead of being redirected to sign in.
+const PUBLIC_PATHS = ['/sign-in', '/auth/callback', '/register']
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })

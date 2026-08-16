@@ -1,22 +1,51 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createAdminClient } from '../supabase/admin.ts'
-import { generateSlots, type CalendarDay, type ScheduleVariant, type TemplateBlock } from '../schedule/generate.ts'
+import {
+  generateSlots,
+  type CalendarDay,
+  type GeneratedSlot,
+  type ScheduleVariant,
+  type TemplateBlock,
+} from '../schedule/generate.ts'
+import type { Database } from './types.ts'
 
 export type UpsertSlotsResult = {
   schoolDays: number
   slotsGenerated: number
+  created: number
+  updated: number
+  skipped: number
+  // Only populated in dry-run mode — the setup wizard's preview (step 12)
+  // needs to show actual dates/labels/times, not just counts. A real
+  // (non-dry-run) call skips this: a cron run over a real term could be
+  // thousands of rows with nothing that needs to read them back.
+  slots?: GeneratedSlot[]
 }
 
-// Generates and persists slots for a school across a date range. Runs as
-// the service role — the only two callers are the cron route (no user
-// session at all) and one-off maintenance scripts, never a page a signed-in
-// user is viewing. See CLAUDE.md rule 2.
+// Generates and persists slots for a school across a date range.
+//
+// Takes an injectable client, defaulting to the service role — that default
+// is what the cron route and one-off scripts use (no user session at all,
+// see CLAUDE.md rule 2). The setup wizard's confirm step (step 12) is
+// different: it's a real signed-in admin's own action, so it passes its own
+// RLS-respecting session client instead. slots/calendar_days already have
+// working "admin, own school" insert policies from step 03 — there's no
+// reason to reach for service role there just because this function
+// originally only had service-role callers.
+//
+// Any slot that already has a live round attached (not cancelled/expired)
+// is skipped entirely, never touched — not just for the wizard's editing
+// flow (task 4), but unconditionally: it costs nothing on a first-time
+// generation, since nothing has a round yet, and makes "never touched" an
+// actual invariant of this function rather than something callers have to
+// remember to protect separately.
 export async function upsertSlotsForRange(
   schoolId: string,
   from: string,
   to: string,
-  options: { dryRun?: boolean } = {}
+  options: { dryRun?: boolean; client?: SupabaseClient<Database> } = {}
 ): Promise<UpsertSlotsResult> {
-  const supabase = createAdminClient()
+  const supabase = options.client ?? createAdminClient()
 
   const { data: school, error: schoolError } = await supabase
     .from('schools')
@@ -47,7 +76,7 @@ export async function upsertSlotsForRange(
   }))
 
   if (calendarDays.length === 0) {
-    return { schoolDays: 0, slotsGenerated: 0 }
+    return { schoolDays: 0, slotsGenerated: 0, created: 0, updated: 0, skipped: 0 }
   }
 
   const variantIds = [
@@ -87,10 +116,32 @@ export async function upsertSlotsForRange(
   const slots = generateSlots(calendarDays, variants, blocks, school.timezone)
 
   if (options.dryRun) {
-    return { schoolDays: calendarDays.length, slotsGenerated: slots.length }
+    return { schoolDays: calendarDays.length, slotsGenerated: slots.length, created: 0, updated: 0, skipped: 0, slots }
   }
 
-  const rows = slots.map((s) => ({
+  const calendarDayIds = calendarDays.map((d) => d.id)
+  const key = (calendarDayId: string, blockId: string) => `${calendarDayId}:${blockId}`
+
+  const { data: existingRaw, error: existingError } = await supabase
+    .from('slots')
+    .select('calendar_day_id, block_id, rounds ( status )')
+    .in('calendar_day_id', calendarDayIds)
+
+  if (existingError) throw existingError
+
+  const existingKeys = new Set((existingRaw ?? []).map((s) => key(s.calendar_day_id, s.block_id)))
+  const protectedKeys = new Set(
+    (existingRaw ?? [])
+      .filter((s) => (s.rounds ?? []).some((r) => r.status !== 'cancelled' && r.status !== 'expired'))
+      .map((s) => key(s.calendar_day_id, s.block_id))
+  )
+
+  const toWrite = slots.filter((s) => !protectedKeys.has(key(s.calendarDayId, s.blockId)))
+  const skipped = slots.length - toWrite.length
+  const created = toWrite.filter((s) => !existingKeys.has(key(s.calendarDayId, s.blockId))).length
+  const updated = toWrite.length - created
+
+  const rows = toWrite.map((s) => ({
     school_id: schoolId,
     calendar_day_id: s.calendarDayId,
     block_id: s.blockId,
@@ -103,14 +154,18 @@ export async function upsertSlotsForRange(
   // existing slot gets its label/times updated in place, keeping its
   // original id. That's what makes regeneration safe — rounds and
   // availabilities reference a slot by id, and upsert never changes it or
-  // deletes the row, only re-running generation from scratch would.
-  const { error: upsertError } = await supabase
-    .from('slots')
-    .upsert(rows, { onConflict: 'calendar_day_id,block_id' })
+  // deletes the row, only re-running generation from scratch would. Slots
+  // with a live round attached were already filtered out of `toWrite`
+  // above, so this never touches them at all.
+  if (rows.length > 0) {
+    const { error: upsertError } = await supabase
+      .from('slots')
+      .upsert(rows, { onConflict: 'calendar_day_id,block_id' })
 
-  if (upsertError) throw upsertError
+    if (upsertError) throw upsertError
+  }
 
-  return { schoolDays: calendarDays.length, slotsGenerated: slots.length }
+  return { schoolDays: calendarDays.length, slotsGenerated: slots.length, created, updated, skipped }
 }
 
 // Read-only, for step 08's week grid and anything else displaying slots to
