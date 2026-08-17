@@ -41,6 +41,10 @@ export async function inviteRoster(formData: FormData): Promise<ActionResult> {
   )
 
   revalidatePath('/admin/setup/roster')
+  // RosterForm (this action) is reused directly on /admin/roster (step
+  // 15) rather than duplicated — revalidate that path too so it reflects
+  // an invite sent from there without a manual refresh.
+  revalidatePath('/admin/roster')
   revalidatePath('/admin')
   return { ok: true, outcomes }
 }

@@ -24,6 +24,32 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}/sign-in?error=not-on-roster`)
     }
 
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+
+    if (user) {
+      // Step 15: a deactivated member's profile still exists (never
+      // deleted, per task 2), so the OAuth exchange above succeeds even
+      // for them — this is the check that actually stops the sign-in
+      // from completing. getCurrentUser() has the matching check for a
+      // session that was already live when the admin deactivated them.
+      const { data: profile } = await supabase.from('profiles').select('is_active').eq('id', user.id).maybeSingle()
+      if (profile && !profile.is_active) {
+        await supabase.auth.signOut()
+        return NextResponse.redirect(`${origin}/sign-in?error=deactivated`)
+      }
+
+      // Once per real sign-in, not once per page view — "last sign-in"
+      // per step 15's roster list, not a per-request presence ping.
+      // Self-update via RLS (profiles_update_self_or_admin), not the
+      // service role; not in the blocked-columns list on
+      // profiles_restrict_self_update, so it passes for a non-admin same
+      // as an admin. Best-effort: a failure here shouldn't block a real
+      // sign-in from completing.
+      await supabase.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', user.id)
+    }
+
     return NextResponse.redirect(origin)
   }
 

@@ -37,3 +37,16 @@ export function todayInTimezone(timeZone: string): string {
     day: '2-digit',
   }).format(new Date())
 }
+
+// Same en-CA trick as todayInTimezone, but for an arbitrary instant
+// rather than "now" — the school-local calendar date a timestamptz falls
+// on, used for matching a round/slot to a term by date range (archive.ts,
+// admin.ts) since no table stores a term_id directly.
+export function dateInTimezone(isoTimestamp: string, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(isoTimestamp))
+}

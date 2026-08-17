@@ -24,6 +24,12 @@ export default async function SignInPage({
           your coach invited.
         </p>
       )}
+      {error === 'deactivated' && (
+        <p className="max-w-sm text-center text-red-600">
+          Your account has been deactivated. Contact your coach if you think
+          this is a mistake.
+        </p>
+      )}
       <SignInButton />
     </main>
   )

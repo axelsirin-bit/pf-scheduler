@@ -416,25 +416,31 @@ export async function createRoom(schoolId: string, name: string, note: string | 
 // ---------------------------------------------------------------------
 
 export type RosterEntryInput = { email: string; roles: Database['public']['Enums']['app_role'][] }
-export type RosterInviteOutcome = { email: string; ok: boolean; error?: string }
+export type RosterInviteOutcome = { email: string; ok: boolean; error?: string; needsApproval?: boolean }
 
 // One insert per row rather than a single bulk insert — roster_invites has
 // a unique (school_id, lower(email)) index, and a bulk insert would fail
 // the whole batch on the first duplicate. This gives per-email feedback
 // instead, which matters for a pasted list where a few emails are often
-// already invited.
+// already invited. needs_approval is read back (not computed here) since
+// step 15's roster_invites_rate_limit trigger is what actually decides it
+// — this function doesn't duplicate that logic, just reports what happened.
 export async function inviteRosterMembers(schoolId: string, entries: RosterEntryInput[]): Promise<RosterInviteOutcome[]> {
   const { createClient } = await import('../supabase/server.ts')
   const supabase = await createClient()
 
   const results: RosterInviteOutcome[] = []
   for (const entry of entries) {
-    const { error } = await supabase.from('roster_invites').insert({
-      school_id: schoolId,
-      email: entry.email,
-      roles: entry.roles,
-      age_confirmed: true,
-    })
+    const { data, error } = await supabase
+      .from('roster_invites')
+      .insert({
+        school_id: schoolId,
+        email: entry.email,
+        roles: entry.roles,
+        age_confirmed: true,
+      })
+      .select('needs_approval')
+      .single()
 
     if (error) {
       results.push({
@@ -443,14 +449,22 @@ export async function inviteRosterMembers(schoolId: string, entries: RosterEntry
         error: error.code === '23505' ? 'Already invited.' : error.message,
       })
     } else {
-      results.push({ email: entry.email, ok: true })
+      results.push({ email: entry.email, ok: true, needsApproval: data?.needs_approval ?? false })
     }
   }
 
   return results
 }
 
-export type RosterInviteSummary = { email: string; roles: string[]; claimedAt: string | null }
+export type RosterInviteSummary = {
+  id: string
+  email: string
+  roles: string[]
+  claimedAt: string | null
+  needsApproval: boolean
+  approvedBy: string | null
+  invitedBy: string | null
+}
 
 export async function getRosterInvites(schoolId: string): Promise<RosterInviteSummary[]> {
   const { createClient } = await import('../supabase/server.ts')
@@ -458,12 +472,20 @@ export async function getRosterInvites(schoolId: string): Promise<RosterInviteSu
 
   const { data, error } = await supabase
     .from('roster_invites')
-    .select('email, roles, claimed_at')
+    .select('id, email, roles, claimed_at, needs_approval, approved_by, invited_by')
     .eq('school_id', schoolId)
     .order('email')
 
   if (error) throw error
-  return (data ?? []).map((r) => ({ email: r.email, roles: r.roles, claimedAt: r.claimed_at }))
+  return (data ?? []).map((r) => ({
+    id: r.id,
+    email: r.email,
+    roles: r.roles,
+    claimedAt: r.claimed_at,
+    needsApproval: r.needs_approval,
+    approvedBy: r.approved_by,
+    invitedBy: r.invited_by,
+  }))
 }
 
 // ---------------------------------------------------------------------

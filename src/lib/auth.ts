@@ -34,6 +34,17 @@ export const getCurrentUser = cache(async () => {
     throw new Error(`No profile found for authenticated user ${user.id}: ${error?.message}`)
   }
 
+  // Step 15: deactivating a member (admin/roster/actions.ts) has to take
+  // effect immediately, not just block a future sign-in attempt — a
+  // Supabase session can already be live and auto-refreshing when an
+  // admin deactivates someone, so this is the check that actually ends
+  // it. The auth callback route has the same check for the "brand new
+  // sign-in attempt" case; this one covers everything already signed in.
+  if (!profile.is_active) {
+    await supabase.auth.signOut()
+    redirect('/sign-in?error=deactivated')
+  }
+
   return profile
 })
 

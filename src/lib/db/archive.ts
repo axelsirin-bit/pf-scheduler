@@ -1,5 +1,6 @@
 import type { Database } from './types.ts'
 import { getSchoolTerms, type SchoolTerm } from './onboarding.ts'
+import { dateInTimezone } from '../schedule/week-bounds.ts'
 
 type LinkKind = Database['public']['Enums']['link_kind']
 type RoundStatus = Database['public']['Enums']['round_status']
@@ -89,12 +90,7 @@ export function shapeArchiveRound(raw: RawArchiveRound, terms: SchoolTerm[], tim
 
   const currentResult = pickCurrentResult(raw.round_results)
 
-  const dateStr = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(raw.slots.starts_at))
+  const dateStr = dateInTimezone(raw.slots.starts_at, timeZone)
   const term = terms.find((t) => t.startsOn <= dateStr && dateStr <= t.endsOn) ?? null
 
   const linkKinds = new Set(raw.round_links.map((l) => l.kind))
@@ -278,12 +274,7 @@ export function shapeRoundDetail(raw: RawRoundDetail, terms: SchoolTerm[], timeZ
 
   const currentResult = pickCurrentResult(raw.round_results)
 
-  const dateStr = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date(raw.slots.starts_at))
+  const dateStr = dateInTimezone(raw.slots.starts_at, timeZone)
   const term = terms.find((t) => t.startsOn <= dateStr && dateStr <= t.endsOn) ?? null
 
   const links: RoundLink[] = raw.round_links
