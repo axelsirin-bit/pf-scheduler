@@ -15,7 +15,15 @@ import { NextResponse, type NextRequest } from 'next/server'
 // signed-in admin without being listed here. Adding it would let an
 // unauthenticated visitor reach it and hit an unhandled exception in
 // getCurrentUser() instead of being redirected to sign in.
-const PUBLIC_PATHS = ['/sign-in', '/auth/callback', '/register']
+//
+// /api/cron IS deliberately public, for a different reason than /register:
+// Vercel's own scheduler calls it with no session cookie at all, only an
+// Authorization header — found live, this step's cron route was silently
+// redirected to /sign-in by this same gate before its own CRON_SECRET
+// check ever ran. Session presence was never the right gate for this path
+// anyway; the route's own bearer-token check is the real access control,
+// same pattern as /register's service-role-backed action.
+const PUBLIC_PATHS = ['/sign-in', '/auth/callback', '/register', '/api/cron']
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })

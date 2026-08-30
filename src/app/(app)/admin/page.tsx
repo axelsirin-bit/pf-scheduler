@@ -47,6 +47,9 @@ export default function AdminPage() {
         <Link href="/admin/rooms" className="underline">
           Rooms
         </Link>
+        <Link href="/admin/schedule/feed" className="underline">
+          Calendar feed
+        </Link>
         <Link href="/admin/audit" className="underline">
           Audit log
         </Link>

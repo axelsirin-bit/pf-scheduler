@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from './types.ts'
 import { rotationToCalendarDays, type HolidayInput } from '../schedule/rotation.ts'
 
@@ -70,9 +71,17 @@ export async function updateSchoolBasics(
 
 export type SchoolTerm = { id: string; name: string; startsOn: string; endsOn: string }
 
-export async function getSchoolTerms(schoolId: string): Promise<SchoolTerm[]> {
-  const { createClient } = await import('../supabase/server.ts')
-  const supabase = await createClient()
+// Step 16: takes an injectable client (defaulting to the usual
+// RLS-respecting session), same reasoning as slots.ts's
+// upsertSlotsForRange — the ICS sync needs to call this from a cron
+// route and a service-role script, neither of which has a session for
+// server.ts's dynamic import to read.
+export async function getSchoolTerms(schoolId: string, client?: SupabaseClient<Database>): Promise<SchoolTerm[]> {
+  let supabase = client
+  if (!supabase) {
+    const { createClient } = await import('../supabase/server.ts')
+    supabase = await createClient()
+  }
 
   const { data, error } = await supabase
     .from('school_terms')
@@ -314,6 +323,19 @@ export async function getScheduleVariants(schoolId: string): Promise<{ id: strin
     .select('id, name')
     .eq('school_id', schoolId)
     .order('name')
+
+  if (error) throw error
+  return data ?? []
+}
+
+// For step 16's mapping screen — the day-type half of what a summary
+// resolves to, same "list what already exists" role getScheduleVariants
+// plays for the variant half.
+export async function getDayTypes(schoolId: string): Promise<{ id: string; code: string }[]> {
+  const { createClient } = await import('../supabase/server.ts')
+  const supabase = await createClient()
+
+  const { data, error } = await supabase.from('day_types').select('id, code').eq('school_id', schoolId).order('code')
 
   if (error) throw error
   return data ?? []
