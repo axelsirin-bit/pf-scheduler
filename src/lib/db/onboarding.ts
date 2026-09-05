@@ -452,6 +452,8 @@ export async function inviteRosterMembers(schoolId: string, entries: RosterEntry
   const supabase = await createClient()
 
   const results: RosterInviteOutcome[] = []
+  const newlyPendingInviteIds: string[] = []
+
   for (const entry of entries) {
     const { data, error } = await supabase
       .from('roster_invites')
@@ -461,7 +463,7 @@ export async function inviteRosterMembers(schoolId: string, entries: RosterEntry
         roles: entry.roles,
         age_confirmed: true,
       })
-      .select('needs_approval')
+      .select('id, needs_approval')
       .single()
 
     if (error) {
@@ -472,6 +474,31 @@ export async function inviteRosterMembers(schoolId: string, entries: RosterEntry
       })
     } else {
       results.push({ email: entry.email, ok: true, needsApproval: data?.needs_approval ?? false })
+      if (data?.needs_approval) newlyPendingInviteIds.push(data.id)
+    }
+  }
+
+  // Step 17: one email per newly-pending invite, not one summarizing the
+  // whole batch — each is a real, individually actionable signal (a
+  // specific invite a second admin needs to look at), and at the rate
+  // limit's actual threshold (10/hour) a batch rarely produces more than
+  // a handful at once. Best-effort: a real invite was already created
+  // regardless of whether this email succeeds.
+  if (newlyPendingInviteIds.length > 0) {
+    try {
+      const { notifyRateLimitApproval } = await import('../email/notify.ts')
+      const { count } = await supabase
+        .from('roster_invites')
+        .select('id', { count: 'exact', head: true })
+        .eq('school_id', schoolId)
+        .eq('needs_approval', true)
+        .is('approved_by', null)
+      for (const inviteId of newlyPendingInviteIds) {
+        await notifyRateLimitApproval(schoolId, inviteId, count ?? newlyPendingInviteIds.length)
+      }
+    } catch {
+      // Same reasoning as every other secondary-notification failure in
+      // this codebase — the invites themselves already exist.
     }
   }
 

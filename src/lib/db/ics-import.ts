@@ -333,6 +333,18 @@ export async function syncIcsSource(sourceId: string, client: SupabaseClient<Dat
 
   await client.from('ics_sources').update({ last_synced_at: new Date().toISOString(), last_status: 'ok', last_error: null }).eq('id', sourceId)
 
+  // Step 16's own task 7 rule, now actually wired: an empty diff means
+  // nothing to notify about. A real, non-empty batch was already
+  // created regardless of whether this email succeeds.
+  if (entries.length > 0) {
+    try {
+      const { notifyCalendarImportPending } = await import('../email/notify.ts')
+      await notifyCalendarImportPending(source.school_id, batch.id, entries.length)
+    } catch {
+      // Same reasoning as every other secondary-notification failure.
+    }
+  }
+
   return { ok: true, batchId: batch.id, entryCount: entries.length, unmappedCount: unmappedSummaries.length }
 }
 

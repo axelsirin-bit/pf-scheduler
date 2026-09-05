@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { getCurrentUser } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { notifyRoundConfirmed, notifyRoundCancelled } from '@/lib/email/notify'
 
 export type ActionResult = { ok: true; roundId?: string } | { ok: false; error: string }
 
@@ -111,6 +112,22 @@ export async function joinRound(
     return { ok: false, error: participantError.message || 'Could not join this round. Try again.' }
   }
 
+  // Step 17: this specific join might be the fifth person, the one that
+  // flips the round to confirmed (round_participants_maybe_confirm,
+  // step 10) — re-fetch fresh rather than assume, since the trigger's
+  // decision isn't visible from this insert's own result. A failed email
+  // is a secondary, recoverable problem, same reasoning as step 11's
+  // notes-save failure — the join itself already succeeded and should
+  // not be reported as failed because of it.
+  const { data: updatedRound } = await supabase.from('rounds').select('status').eq('id', roundId).maybeSingle()
+  if (updatedRound?.status === 'confirmed') {
+    try {
+      await notifyRoundConfirmed(roundId)
+    } catch {
+      // swallow — see comment above
+    }
+  }
+
   revalidateRoundViews(slotId)
   return { ok: true, roundId }
 }
@@ -178,6 +195,13 @@ export async function cancelRound(roundId: string, reason?: string): Promise<Act
     .eq('id', roundId)
 
   if (updateError) return { ok: false, error: 'Something went wrong. Try again.' }
+
+  try {
+    await notifyRoundCancelled(roundId, user.id)
+  } catch {
+    // Same reasoning as joinRound's confirmation email — the cancel
+    // itself already succeeded.
+  }
 
   revalidateRoundViews(round.slot_id)
   return { ok: true }

@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { getCurrentUser, signOut } from '@/lib/auth'
 import { Nav } from '@/lib/components/nav'
 
@@ -14,6 +15,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="flex items-center gap-3 text-sm">
           {/* display_name only — full names are admin-console-only, see ui-conventions.md */}
           <span>{user.display_name}</span>
+          <Link href="/settings" className="rounded px-2 py-1 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">
+            Settings
+          </Link>
           <form action={signOut}>
             <button
               type="submit"
