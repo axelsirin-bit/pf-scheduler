@@ -152,6 +152,15 @@ begin
   insert into rounds (school_id, slot_id, created_by) values (v_school_a, v_slot_a, v_admin_a) returning id into v_round_a;
   insert into rounds (school_id, slot_id, created_by) values (v_school_b, v_slot_b, v_admin_b) returning id into v_round_b;
 
+  -- round_results_before_insert (step 11) rejects an original submission
+  -- unless the round is already confirmed/awaiting_result — this script
+  -- predates that trigger and never seeded a real 5-person roster to earn
+  -- confirmation the normal way (it doesn't need one for what it tests
+  -- here), so a direct status update stands in for it. A plain UPDATE
+  -- fires no trigger, same workaround the later steps' own live-fixture
+  -- scripts use for the same reason.
+  update rounds set status = 'confirmed', confirmed_at = now() where id = v_round_a;
+
   insert into round_results (school_id, round_id, submitted_by, winning_team, team1_side, rfd)
     values (v_school_a, v_round_a, v_debater_a1, 1, 'pro', repeat('x', 150))
     returning id into v_round_result_a;
@@ -307,6 +316,20 @@ begin
     'admin: audit_log select returns own school only',
     v_count >= 1 and v_count2 = 0,
     format('own=%s other=%s (expected >=1,0)', v_count, v_count2));
+
+  -- `set_config(..., true)` above is transaction-local, not
+  -- statement-local — `supabase db query -f` runs this whole script as
+  -- one transaction, so without this reset `request.jwt.claims` (and
+  -- therefore auth.uid()) would still resolve to admin_a below, during
+  -- cleanup. That stale identity is real, not cosmetic: deleting the
+  -- rls-test auth.users rows cascades into a `roster_invites.claimed_by`
+  -- update, which fires `roster_invites_audit` (step 15), which calls
+  -- `write_audit_log()`, which inserts `audit_log.actor_id =
+  -- auth.uid()` — a foreign key to `profiles`, which by then has
+  -- already cascade-deleted admin_a's own row in the same statement.
+  -- Found by hitting exactly that FK violation on a live re-run.
+  reset role;
+  perform set_config('request.jwt.claims', '', false);
 
 end $$;
 

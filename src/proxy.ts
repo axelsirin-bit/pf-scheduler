@@ -23,7 +23,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 // check ever ran. Session presence was never the right gate for this path
 // anyway; the route's own bearer-token check is the real access control,
 // same pattern as /register's service-role-backed action.
-const PUBLIC_PATHS = ['/sign-in', '/auth/callback', '/register', '/api/cron']
+const PUBLIC_PATHS = ['/sign-in', '/auth/callback', '/register', '/api/cron', '/privacy', '/terms']
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })

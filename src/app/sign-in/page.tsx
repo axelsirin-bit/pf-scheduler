@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { SignInButton } from './sign-in-button'
 
 // Note on the refusal message: the step file asks for it to name the email
@@ -31,6 +32,15 @@ export default async function SignInPage({
         </p>
       )}
       <SignInButton />
+      <p className="text-xs text-neutral-500">
+        <Link href="/privacy" className="underline">
+          Privacy
+        </Link>{' '}
+        ·{' '}
+        <Link href="/terms" className="underline">
+          Terms
+        </Link>
+      </p>
     </main>
   )
 }
