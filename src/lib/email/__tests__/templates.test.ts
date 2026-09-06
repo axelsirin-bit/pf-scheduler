@@ -6,6 +6,7 @@ import {
   roundCancelledEmail,
   rateLimitApprovalEmail,
   calendarImportPendingEmail,
+  schoolApprovalRequestEmail,
   schoolApprovedEmail,
   type RoundDetails,
 } from '../templates'
@@ -103,6 +104,37 @@ describe('admin notification emails', () => {
     const email = calendarImportPendingEmail({ entryCount: 5, reviewUrl: 'https://example.com/admin/schedule/feed/batches/abc' })
     expect(email.subject).toContain('5')
     expect(email.html).toContain('https://example.com/admin/schedule/feed/batches/abc')
+  })
+
+  it('schoolApprovalRequestEmail includes the school, admin, Tabroom link, note, and approve link', () => {
+    const email = schoolApprovalRequestEmail({
+      schoolName: 'Riverbend Academy',
+      adminName: 'Jamie Rivera',
+      adminEmail: 'jamie@riverbend.example',
+      tabroomUrl: 'https://www.tabroom.com/index/paradigm.mhtml?judge_id=12345',
+      note: 'We usually practice on Tuesdays.',
+      approveUrl: 'https://example.com/approve-school/abc-123',
+    })
+    expect(email.subject).toContain('Riverbend Academy')
+    expect(email.text).toContain('Jamie Rivera')
+    expect(email.text).toContain('jamie@riverbend.example')
+    expect(email.text).toContain('https://www.tabroom.com/index/paradigm.mhtml?judge_id=12345')
+    expect(email.text).toContain('We usually practice on Tuesdays.')
+    expect(email.text).toContain('https://example.com/approve-school/abc-123')
+    expect(email.html).toContain('https://example.com/approve-school/abc-123')
+  })
+
+  it('schoolApprovalRequestEmail omits the note line when there is none', () => {
+    const email = schoolApprovalRequestEmail({
+      schoolName: 'Riverbend Academy',
+      adminName: 'Jamie Rivera',
+      adminEmail: 'jamie@riverbend.example',
+      tabroomUrl: 'https://www.tabroom.com/index/paradigm.mhtml?judge_id=12345',
+      note: null,
+      approveUrl: 'https://example.com/approve-school/abc-123',
+    })
+    expect(email.text).not.toContain('Note:')
+    expect(email.html).not.toContain('<strong>Note:</strong>')
   })
 
   it('schoolApprovedEmail includes the school name, admin name, and sign-in link', () => {

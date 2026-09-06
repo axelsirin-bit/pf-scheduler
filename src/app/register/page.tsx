@@ -1,8 +1,10 @@
 import { RequestForm } from './request-form'
 
 // Public, no session required — see decisions.md, "Excluded: self-serve
-// school registration." This is the request only; approval is manual
-// (scripts/approve-school-request.ts), verified against the Tabroom URL.
+// school registration." This is the request only; approval is still
+// manual, verified against the Tabroom URL — either by clicking the link
+// in the email this sends to the operator (/approve-school/[requestId]),
+// or by hand via scripts/approve-school-request.ts.
 export default function RegisterPage() {
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">

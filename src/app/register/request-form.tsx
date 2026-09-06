@@ -13,7 +13,8 @@ export function RequestForm() {
   if (state?.ok) {
     return (
       <p className="max-w-sm text-center text-neutral-700">
-        Request received. We&apos;ll be in touch at the email you gave us once it&apos;s reviewed.
+        Request received. Check your email — an admin will review this within 24 hours, and you&apos;ll get a sign-in
+        link once it&apos;s approved.
       </p>
     )
   }

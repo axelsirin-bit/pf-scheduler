@@ -7,10 +7,20 @@ import {
   roundCancelledEmail,
   rateLimitApprovalEmail,
   calendarImportPendingEmail,
+  schoolApprovalRequestEmail,
   schoolApprovedEmail,
   type EmailContent,
   type RoundDetails,
 } from './templates.ts'
+
+// The one operator address this app currently has — see decisions.md's own
+// open question, "who is the adult data owner once the app leaves the
+// first school." Hardcoded rather than an env var since there's exactly
+// one person to notify and no schema anywhere to configure a different
+// one; revisit this the moment that question gets a real answer. Exported
+// so the /approve-school route can stamp the same address into
+// school_requests.reviewed_by rather than a second hardcoded copy.
+export const OPERATOR_EMAIL = 'axel.sirinyan@gmail.com'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -358,11 +368,45 @@ export async function notifyCalendarImportPending(schoolId: string, batchId: str
 }
 
 // ---------------------------------------------------------------------
-// School approval (scripts/approve-school-request.ts) — the one email in
-// this codebase whose recipient has no profiles row yet: they haven't
-// signed in for the first time, so there's no real user_id to give
-// claimAndSend. entity_id is the school_requests row's own id, which is
-// naturally one-per-approval and never reused.
+// School approval request (register/actions.ts) — notifies the operator
+// that a new registration needs a human look at the Tabroom profile
+// before anything is created. No notifications_sent tracking here, unlike
+// every other notify* function: this fires exactly once, inline, right
+// after the one insert that creates its own school_requests row — there's
+// no separate route or script that could replay it against the same row
+// the way a cron tick or a re-opened email link could for the others, so
+// there's no realistic double-send to guard against. (notifications_sent
+// couldn't represent this one anyway: its school_id column is not
+// nullable, and no school exists yet at this point.)
+// ---------------------------------------------------------------------
+export async function notifySchoolApprovalRequest(input: {
+  schoolName: string
+  adminName: string
+  adminEmail: string
+  tabroomUrl: string
+  note: string | null
+  requestId: string
+}): Promise<{ sent: boolean; error?: string }> {
+  const content = schoolApprovalRequestEmail({
+    schoolName: input.schoolName,
+    adminName: input.adminName,
+    adminEmail: input.adminEmail,
+    tabroomUrl: input.tabroomUrl,
+    note: input.note,
+    approveUrl: `${appUrl()}/approve-school/${input.requestId}`,
+  })
+
+  const result = await sendEmail(OPERATOR_EMAIL, content)
+  return result.ok ? { sent: true } : { sent: false, error: result.error }
+}
+
+// ---------------------------------------------------------------------
+// School approval (src/lib/db/school-requests.ts, called from both
+// scripts/approve-school-request.ts and the /approve-school/[requestId]
+// route) — the one email in this codebase whose recipient has no profiles
+// row yet: they haven't signed in for the first time, so there's no real
+// user_id to give claimAndSend. entity_id is the school_requests row's own
+// id, which is naturally one-per-approval and never reused.
 //
 // Deliberately not built on claimAndSend's insert-before-send claim: that
 // pattern's race-safety comes from the two partial unique indexes added in
@@ -371,10 +415,9 @@ export async function notifyCalendarImportPending(schoolId: string, batchId: str
 // Postgres never treats two NULLs as equal, so a null user_id here would
 // make the index silently useless, the exact hole that migration's own
 // comment already documents for round_id. A plain existence check before
-// sending is the right amount of protection for a script one person runs
-// by hand — not a concurrent cron — matching what task 5 actually asked
-// for ("check notifications_sent table"), not a claim to invent new schema
-// for a single always-manual call site.
+// sending is the right amount of protection here: both real callers are a
+// single human approving a single request (a script invocation or an
+// email-link click), never a concurrent cron.
 export async function notifySchoolApproved(input: {
   requestId: string
   schoolId: string

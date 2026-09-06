@@ -1,6 +1,7 @@
 'use server'
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { notifySchoolApprovalRequest } from '@/lib/email/notify'
 
 export type SubmitRequestResult = { ok: true } | { ok: false; error: string }
 
@@ -33,16 +34,37 @@ export async function submitSchoolRequest(formData: FormData): Promise<SubmitReq
   }
 
   const supabase = createAdminClient()
-  const { error } = await supabase.from('school_requests').insert({
-    school_name: schoolName,
-    admin_name: adminName,
-    admin_email: adminEmail,
-    tabroom_url: tabroomUrl,
-    note: note || null,
-  })
+  const { data: request, error } = await supabase
+    .from('school_requests')
+    .insert({
+      school_name: schoolName,
+      admin_name: adminName,
+      admin_email: adminEmail,
+      tabroom_url: tabroomUrl,
+      note: note || null,
+    })
+    .select('id')
+    .single()
 
-  if (error) {
+  if (error || !request) {
     return { ok: false, error: 'Something went wrong submitting your request. Try again.' }
+  }
+
+  // Best-effort, same reasoning as every other notification hook in this
+  // codebase — the request is already recorded regardless of whether this
+  // email goes through, and it's still visible directly in school_requests
+  // if it needs a manual nudge.
+  try {
+    await notifySchoolApprovalRequest({
+      schoolName,
+      adminName,
+      adminEmail,
+      tabroomUrl,
+      note: note || null,
+      requestId: request.id,
+    })
+  } catch (err) {
+    console.error('Could not send the school-approval-request email:', err)
   }
 
   return { ok: true }

@@ -176,6 +176,39 @@ Review them: ${input.reviewUrl}
   return { subject, text, html }
 }
 
+export function schoolApprovalRequestEmail(input: {
+  schoolName: string
+  adminName: string
+  adminEmail: string
+  tabroomUrl: string
+  note: string | null
+  approveUrl: string
+}): EmailContent {
+  const subject = `Approve school registration: ${input.schoolName}`
+
+  const text = `New school registration waiting for approval:
+
+School: ${input.schoolName}
+Admin: ${input.adminName} <${input.adminEmail}>
+Tabroom profile: ${input.tabroomUrl}${input.note ? `\nNote: ${input.note}` : ''}
+
+Check the Tabroom profile above, then approve here: ${input.approveUrl}
+`
+
+  const html = wrapHtml(`
+    <p>New school registration waiting for approval:</p>
+    <p>
+      <strong>School:</strong> ${escapeHtml(input.schoolName)}<br>
+      <strong>Admin:</strong> ${escapeHtml(input.adminName)} &lt;${escapeHtml(input.adminEmail)}&gt;<br>
+      <strong>Tabroom profile:</strong> <a href="${escapeHtml(input.tabroomUrl)}">${escapeHtml(input.tabroomUrl)}</a>
+      ${input.note ? `<br><strong>Note:</strong> ${escapeHtml(input.note)}` : ''}
+    </p>
+    <p>Check the Tabroom profile above, then <a href="${escapeHtml(input.approveUrl)}">approve this school</a>.</p>
+  `)
+
+  return { subject, text, html }
+}
+
 export function schoolApprovedEmail(input: { schoolName: string; adminName: string; signInUrl: string }): EmailContent {
   const subject = `${input.schoolName} is approved on PF Scheduler`
 
