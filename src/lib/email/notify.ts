@@ -7,6 +7,7 @@ import {
   roundCancelledEmail,
   rateLimitApprovalEmail,
   calendarImportPendingEmail,
+  schoolApprovedEmail,
   type EmailContent,
   type RoundDetails,
 } from './templates.ts'
@@ -354,6 +355,66 @@ export async function notifyCalendarImportPending(schoolId: string, batchId: str
       content,
     })
   }
+}
+
+// ---------------------------------------------------------------------
+// School approval (scripts/approve-school-request.ts) — the one email in
+// this codebase whose recipient has no profiles row yet: they haven't
+// signed in for the first time, so there's no real user_id to give
+// claimAndSend. entity_id is the school_requests row's own id, which is
+// naturally one-per-approval and never reused.
+//
+// Deliberately not built on claimAndSend's insert-before-send claim: that
+// pattern's race-safety comes from the two partial unique indexes added in
+// step 17's migration, both of which require a non-null column (round_id
+// or entity_id) *paired with* a non-null user_id to mean anything —
+// Postgres never treats two NULLs as equal, so a null user_id here would
+// make the index silently useless, the exact hole that migration's own
+// comment already documents for round_id. A plain existence check before
+// sending is the right amount of protection for a script one person runs
+// by hand — not a concurrent cron — matching what task 5 actually asked
+// for ("check notifications_sent table"), not a claim to invent new schema
+// for a single always-manual call site.
+export async function notifySchoolApproved(input: {
+  requestId: string
+  schoolId: string
+  schoolName: string
+  adminName: string
+  adminEmail: string
+}): Promise<{ sent: boolean; error?: string }> {
+  const admin = createAdminClient()
+
+  const { data: existing, error: checkError } = await admin
+    .from('notifications_sent')
+    .select('id')
+    .eq('kind', 'school_approved')
+    .eq('entity_id', input.requestId)
+    .maybeSingle()
+  if (checkError) throw checkError
+  if (existing) return { sent: false } // already sent for this request
+
+  const { data: claimed, error: insertError } = await admin
+    .from('notifications_sent')
+    .insert({ school_id: input.schoolId, kind: 'school_approved', entity_id: input.requestId })
+    .select('id')
+    .single()
+  if (insertError) throw insertError
+
+  const content = schoolApprovedEmail({
+    schoolName: input.schoolName,
+    adminName: input.adminName,
+    signInUrl: `${appUrl()}/sign-in`,
+  })
+
+  const result = await sendEmail(input.adminEmail, content)
+  if (!result.ok) {
+    // Same reasoning as claimAndSend: roll back the claim so a later
+    // retry actually resends instead of silently believing it already did.
+    await admin.from('notifications_sent').delete().eq('id', claimed.id)
+    return { sent: false, error: result.error }
+  }
+
+  return { sent: true }
 }
 
 function appUrl(): string {

@@ -6,6 +6,7 @@ import {
   roundCancelledEmail,
   rateLimitApprovalEmail,
   calendarImportPendingEmail,
+  schoolApprovedEmail,
   type RoundDetails,
 } from '../templates'
 
@@ -102,5 +103,17 @@ describe('admin notification emails', () => {
     const email = calendarImportPendingEmail({ entryCount: 5, reviewUrl: 'https://example.com/admin/schedule/feed/batches/abc' })
     expect(email.subject).toContain('5')
     expect(email.html).toContain('https://example.com/admin/schedule/feed/batches/abc')
+  })
+
+  it('schoolApprovedEmail includes the school name, admin name, and sign-in link', () => {
+    const email = schoolApprovedEmail({
+      schoolName: 'Riverbend Academy',
+      adminName: 'Jamie Rivera',
+      signInUrl: 'https://example.com/sign-in',
+    })
+    expect(email.subject).toContain('Riverbend Academy')
+    expect(email.text).toContain('Jamie Rivera')
+    expect(email.text).toContain('https://example.com/sign-in')
+    expect(email.html).toContain('https://example.com/sign-in')
   })
 })

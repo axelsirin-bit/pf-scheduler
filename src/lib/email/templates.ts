@@ -176,6 +176,25 @@ Review them: ${input.reviewUrl}
   return { subject, text, html }
 }
 
+export function schoolApprovedEmail(input: { schoolName: string; adminName: string; signInUrl: string }): EmailContent {
+  const subject = `${input.schoolName} is approved on PF Scheduler`
+
+  const text = `Hi ${input.adminName},
+
+${input.schoolName} has been approved on PF Scheduler.
+
+Click here to sign in and complete your schedule setup: ${input.signInUrl}
+`
+
+  const html = wrapHtml(`
+    <p>Hi ${escapeHtml(input.adminName)},</p>
+    <p>${escapeHtml(input.schoolName)} has been approved on PF Scheduler.</p>
+    <p><a href="${escapeHtml(input.signInUrl)}">Click here to sign in and complete your schedule setup</a></p>
+  `)
+
+  return { subject, text, html }
+}
+
 export function calendarImportPendingEmail(input: { entryCount: number; reviewUrl: string }): EmailContent {
   const subject = `PF: calendar sync found ${input.entryCount} change(s) to review`
 
